@@ -123,6 +123,21 @@
     var wrap = form.closest('.gform_wrapper') || form;
     if (wrap.scrollIntoView) wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
     else window.scrollTo(0, 0);
+    /* Les widgets Gravity Forms (dont la signature) s'initialisent au
+       chargement, quand les pages 2-3 sont cachees : le canvas se retrouve
+       a 0 px. On redecelenche le re-rendu pour les reinitialiser visibles,
+       comme le fait WordPress apres chaque changement de page. */
+    try {
+      if (window.jQuery) window.jQuery(window).trigger('gform_post_render', [fid, n]);
+    } catch (e) { /* ignore */ }
+    try {
+      form.querySelectorAll('canvas').forEach(function (cv) {
+        if (cv.style.width === '0px' || cv.offsetWidth === 0) {
+          cv.style.width = cv.width + 'px';
+          cv.style.height = cv.height + 'px';
+        }
+      });
+    } catch (e) { /* ignore */ }
   }
   function showConfirmation(form, msg) {
     var wrap = form.closest('.gform_wrapper') || form.parentNode;
@@ -132,6 +147,14 @@
     form.style.display = 'none';
     wrap.insertAdjacentElement('afterbegin', d);
     d.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function resetSubmitting(fid) {
+    /* Le onclick du bouton Submit met window.gf_submitting_<id> a true avant
+       l'envoi ; si la validation echoue, le drapeau reste a true et le
+       bouton refuse tout clic suivant (return false) : la page reste
+       bloquee sur l'erreur. On le remet a false pour permettre un nouvel essai. */
+    try { window['gf_submitting_' + fid] = false; } catch (e) { /* ignore */ }
   }
 
   /* Boutons Next / Back (leur onclick d'origine declenchait un submit AJAX). */
@@ -158,29 +181,29 @@
       if (pageNum(cur) < pages.length) {
         /* Entree dans un champ : avancer comme Next, pas de soumission. */
         e.preventDefault(); e.stopPropagation();
-        if (validatePage(cur)) showPage(form, pageNum(cur) + 1);
+        if (validatePage(cur)) showPage(form, pageNum(cur) + 1); else resetSubmitting(fid);
         return;
       }
-      if (!validatePage(cur)) { e.preventDefault(); e.stopPropagation(); return; }
+      if (!validatePage(cur)) { e.preventDefault(); e.stopPropagation(); resetSubmitting(fid); return; }
       e.preventDefault(); e.stopPropagation();
       if (BOOKING[fid]) { window.location.href = ROOT + BOOKING[fid]; }
       else { showConfirmation(form, 'Thank you for your submission. We will be in touch shortly.'); }
       return;
     }
     if (label === 'Get Started') {
-      if (!validatePage(form)) { e.preventDefault(); e.stopPropagation(); return; }
+      if (!validatePage(form)) { e.preventDefault(); e.stopPropagation(); resetSubmitting(fid); return; }
       e.preventDefault(); e.stopPropagation();
       window.location.href = ROOT + 'intake-form/';
       return;
     }
     if (label === 'Send Message') {
-      if (!validatePage(form)) { e.preventDefault(); e.stopPropagation(); return; }
+      if (!validatePage(form)) { e.preventDefault(); e.stopPropagation(); resetSubmitting(fid); return; }
       e.preventDefault(); e.stopPropagation();
       showConfirmation(form, "Thanks for contacting us! We'll get back to you shortly.");
       return;
     }
     if (btn) {
-      if (!validatePage(form)) { e.preventDefault(); e.stopPropagation(); return; }
+      if (!validatePage(form)) { e.preventDefault(); e.stopPropagation(); resetSubmitting(fid); return; }
       e.preventDefault(); e.stopPropagation();
       showConfirmation(form, 'Thank you for your submission. We will be in touch shortly.');
     }
