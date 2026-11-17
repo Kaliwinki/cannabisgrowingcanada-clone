@@ -130,6 +130,18 @@
     try {
       if (window.jQuery) window.jQuery(window).trigger('gform_post_render', [fid, n]);
     } catch (e) { /* ignore */ }
+    /* La signature ne se repare pas avec post_render seul : le gestionnaire
+       ne fait rien quand original-width est deja enregistre (1er rendu,
+       cache). On appelle donc directement le redimensionnement de
+       Gravity Forms sur les cases encore a 0 px, page visible. */
+    try {
+      if (window.gformSignatureResize && window.jQuery) {
+        form.querySelectorAll('.gfield_signature_container').forEach(function (cont) {
+          var cv = cont.querySelector('canvas');
+          if (cv && cv.offsetWidth === 0) window.gformSignatureResize(window.jQuery(cont));
+        });
+      }
+    } catch (e) { /* ignore */ }
     try {
       form.querySelectorAll('canvas').forEach(function (cv) {
         if (cv.style.width === '0px' || cv.offsetWidth === 0) {
