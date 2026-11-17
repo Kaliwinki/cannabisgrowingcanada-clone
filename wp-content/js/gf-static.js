@@ -132,15 +132,34 @@
     } catch (e) { /* ignore */ }
     /* La signature ne se repare pas avec post_render seul : le gestionnaire
        ne fait rien quand original-width est deja enregistre (1er rendu,
-       cache). On appelle donc directement le redimensionnement de
-       Gravity Forms sur les cases encore a 0 px, page visible. */
+       cache), et gformSignatureResize n'est pas accessible en global
+       (code regroupe dans le bundle). On passe par l'instance
+       SuperSignature creee par la page (window.obj<input_...>), dont la
+       methode ResizeSignature remet conteneur + canvas + coordonnees
+       a la bonne taille ; a defaut, on remplace le canvas par une case
+       dessinable maison. */
     try {
-      if (window.gformSignatureResize && window.jQuery) {
-        form.querySelectorAll('.gfield_signature_container').forEach(function (cont) {
-          var cv = cont.querySelector('canvas');
-          if (cv && cv.offsetWidth === 0) window.gformSignatureResize(window.jQuery(cont));
-        });
-      }
+      form.querySelectorAll('.gfield_signature_container').forEach(function (cont) {
+        var cv = cont.querySelector('canvas');
+        if (!cv || cv.offsetWidth !== 0) return;
+        var w = 300, h = 180;
+        try {
+          if (window.jQuery) {
+            var ow = window.jQuery(cont).data('original-width');
+            var ratio = window.jQuery(cont).data('ratio');
+            if (ow) { w = Math.round(ow); if (ratio) h = Math.max(180, Math.round(w * ratio)); }
+          }
+        } catch (e) { /* ignore */ }
+        var obj = window['obj' + cv.id];
+        if (obj && typeof obj.ResizeSignature === 'function') { obj.ResizeSignature(w, h); return; }
+        if (typeof window.ResizeSignature === 'function') { window.ResizeSignature(cv.id, w, h); return; }
+        cont.style.width = w + 'px'; cont.style.height = h + 'px'; cont.style.position = 'relative';
+        var nc = document.createElement('canvas');
+        nc.id = cv.id; nc.width = w; nc.height = h;
+        nc.style.cssText = 'position:absolute;left:0;top:0;width:' + w + 'px;height:' + h + 'px;border:2px dashed #DDDDDD;touch-action:none;cursor:crosshair;';
+        cv.parentNode.replaceChild(nc, cv);
+        wireSignaturePad(nc, cont);
+      });
     } catch (e) { /* ignore */ }
     try {
       form.querySelectorAll('canvas').forEach(function (cv) {
@@ -167,6 +186,43 @@
        bouton refuse tout clic suivant (return false) : la page reste
        bloquee sur l'erreur. On le remet a false pour permettre un nouvel essai. */
     try { window['gf_submitting_' + fid] = false; } catch (e) { /* ignore */ }
+  }
+
+  /* Case de signature de secours (si l'instance Gravity Forms n'est pas
+     joignable) : dessin a la souris / au doigt, encre noire 2 px. */
+  function wireSignaturePad(cv, cont) {
+    var ctx = cv.getContext('2d');
+    var drawing = false, last = null;
+    function pos(e) {
+      var r = cv.getBoundingClientRect();
+      var t = (e.touches && e.touches[0]) || e;
+      return { x: (t.clientX - r.left) * (cv.width / r.width), y: (t.clientY - r.top) * (cv.height / r.height) };
+    }
+    function markSigned() {
+      var v = cont.querySelector('input[type=hidden][id$=_valid]');
+      if (v) v.value = '1';
+    }
+    function start(e) { drawing = true; last = pos(e); markSigned(); if (e.preventDefault) e.preventDefault(); }
+    function move(e) {
+      if (!drawing) return;
+      var p = pos(e);
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+      last = p; if (e.preventDefault) e.preventDefault();
+    }
+    function end() { drawing = false; last = null; }
+    cv.addEventListener('pointerdown', start);
+    cv.addEventListener('pointermove', move);
+    cv.addEventListener('pointerup', end);
+    cv.addEventListener('pointerleave', end);
+    cv.addEventListener('touchstart', start, { passive: false });
+    cv.addEventListener('touchmove', move, { passive: false });
+    cv.addEventListener('touchend', end);
+    var li = cont.closest('li.gfield');
+    if (li) {
+      var reset = li.querySelector('button[id$=_resetbutton]');
+      if (reset) reset.addEventListener('click', function () { ctx.clearRect(0, 0, cv.width, cv.height); });
+    }
   }
 
   /* Boutons Next / Back (leur onclick d'origine declenchait un submit AJAX). */
